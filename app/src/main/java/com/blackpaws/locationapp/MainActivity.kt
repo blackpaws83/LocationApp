@@ -1,6 +1,6 @@
 package com.blackpaws.locationapp
 
-import android.app.Instrumentation.ActivityResult
+import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,24 +15,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import com.blackpaws.locationapp.ui.theme.LocationAppTheme
 import android.Manifest
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val viewModel: LocationViewModel = viewModel()
             LocationAppTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-
+                    MyApp(viewModel)
                 }
             }
         }
@@ -40,7 +42,26 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LocationDisplay(locationUtils: LocationUtils, context: Context) {
+fun MyApp(viewModel: LocationViewModel){
+    val context = LocalContext.current
+    val locationUtils = LocationUtils(context)
+    LocationDisplay(
+        locationUtils = locationUtils,
+        viewModel = viewModel,
+        context = context
+    )
+}
+
+@Composable
+fun LocationDisplay(
+    locationUtils: LocationUtils,
+    viewModel: LocationViewModel,
+    context: Context
+) {
+    val location = viewModel.location.value
+    val address = location?.let {
+        locationUtils.reverseGeocodeLocation(location)
+    }
 
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -51,8 +72,31 @@ fun LocationDisplay(locationUtils: LocationUtils, context: Context) {
                 permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
             ) {
                 //I have access to location
+                locationUtils.requestLocationUpdates(viewModel = viewModel)
             } else {
                 //ask for permission
+                val rationaleRequired = ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as MainActivity,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) || ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as MainActivity,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+                if (rationaleRequired) {
+                    Toast.makeText(
+                        context,
+                        "Location Permission is required for this feature to work",
+                        Toast.LENGTH_LONG
+                        )
+                        .show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Location Permission is required. Please enable in your device Settings",
+                        Toast.LENGTH_LONG
+                    )
+                        .show()
+                }
             }
         }
     )
@@ -62,12 +106,24 @@ fun LocationDisplay(locationUtils: LocationUtils, context: Context) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Location not available")
+        if (location != null) {
+            Text(text = "Address: ${location.latitude} ${location.longitude}\n$address")
+        } else {
+            Text(text = "Location not available")
+        }
+
         Button(onClick = {
             if (locationUtils.hasLocationPermission(context)) {
                 //Permission already granted update the location
+                locationUtils.requestLocationUpdates(viewModel)
             } else {
                 //request location permission
+                requestPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
             }
         }) {
             Text(text = "Get Location")
